@@ -32,9 +32,8 @@ my $job = AnyEvent::Subprocess->new(
 # inotify is sometimes a bit too enthusiastic about sending events.
 # this calms it down.
 my $damper = AnyEvent::Debounce->new(
-    maximum_delays => 10,
-    delay          => 1,
-    cb             => sub { run_job() },
+    delay => 1,
+    cb    => sub { run_job() },
 );
 
 my $notify = AnyEvent::Inotify::Simple->new(
