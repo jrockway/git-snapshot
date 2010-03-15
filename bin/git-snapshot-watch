@@ -1,0 +1,56 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use 5.010;
+
+use Path::Class;
+use AnyEvent::Inotify::Simple;
+use AnyEvent::Subprocess;
+use EV;
+
+my $dir = dir(shift || '.')->resolve->absolute;
+
+my $lock = 0;
+my $next = 0;
+
+my $sigint = AnyEvent->signal( signal => 'INT', cb => \&quit );
+
+my $job = AnyEvent::Subprocess->new(
+    code => [qw/git snapshot/, "$dir"],
+    on_completion => sub {
+        $lock = 0;
+        $next->() if $next;
+        undef $next;
+    },
+);
+
+my $notify = AnyEvent::Inotify::Simple->new(
+    directory => $dir ,
+    event_receiver => sub {
+        my ($type, @args) = @_;
+        return if $type ~~ [qw/open close access/];
+        say {*STDERR} "Change ($type) of @args detected";
+        run_job();
+    },
+);
+
+say {*STDERR} "Watching $dir";
+EV::loop();
+exit 0;
+
+sub run_job {
+    if($lock){
+        $next = sub { run_job() };
+    }
+    else {
+        $lock = 1;
+        $job->run;
+    }
+}
+
+sub quit {
+    say {*STDERR} "Shutting down...";
+    $next = sub { EV::unloop() };
+    run_job();
+};

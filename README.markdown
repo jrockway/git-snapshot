@@ -84,6 +84,13 @@ snapshot it:
 	# snapshot every directory under ~/code that has the red label
 	mdfind -0 -onlyin ~/code "kMDItemFSLabel == 6" | xargs -0 -n 1 git-snapshot
 
+## With Inotify
+
+On Linux, just run `git snapshot-watch` in the directory you want to
+keep snapshots of.  Every time you make a change to your project, it
+will automatically be snapshotted.  When you don't want this to happen
+anymore, just Control-C the process.
+
 ## See Also
 
 - `git help rev-parse` for specifying time based revisions (e.g.
