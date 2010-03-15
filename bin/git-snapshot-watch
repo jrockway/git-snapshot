@@ -7,7 +7,10 @@ use 5.010;
 use Path::Class;
 use AnyEvent::Inotify::Simple;
 use AnyEvent::Subprocess;
+use AnyEvent::Debounce;
 use EV;
+
+local $| = 1;
 
 my $dir = dir(shift || '.')->resolve->absolute;
 
@@ -19,10 +22,19 @@ my $sigint = AnyEvent->signal( signal => 'INT', cb => \&quit );
 my $job = AnyEvent::Subprocess->new(
     code => [qw/git snapshot/, "$dir"],
     on_completion => sub {
+        say {*STDERR} "...done";
         $lock = 0;
         $next->() if $next;
         undef $next;
     },
+);
+
+# inotify is sometimes a bit too enthusiastic about sending events.
+# this calms it down.
+my $damper = AnyEvent::Debounce->new(
+    maximum_delays => 10,
+    delay          => 1,
+    cb             => sub { run_job() },
 );
 
 my $notify = AnyEvent::Inotify::Simple->new(
@@ -31,7 +43,7 @@ my $notify = AnyEvent::Inotify::Simple->new(
         my ($type, @args) = @_;
         return if $type ~~ [qw/open close access/];
         say {*STDERR} "Change ($type) of @args detected";
-        run_job();
+        $damper->send;
     },
 );
 
@@ -41,9 +53,11 @@ exit 0;
 
 sub run_job {
     if($lock){
+        say {*STDERR} "Snapshot in progress; deferring.";
         $next = sub { run_job() };
     }
     else {
+        print {*STDERR} "Snapshotting";
         $lock = 1;
         $job->run;
     }
@@ -53,4 +67,4 @@ sub quit {
     say {*STDERR} "Shutting down...";
     $next = sub { EV::unloop() };
     run_job();
-};
+}
